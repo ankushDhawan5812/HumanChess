@@ -1,6 +1,7 @@
 import torch
 from infra import TransformerDecoder   
 from fen_conv import NUM_BUCKETS, BUCKET_MIDPOINTS, convert_to_token   
+import chess
 
 action_size = 31        
 seq_len     = 77
@@ -36,15 +37,17 @@ model = TransformerDecoder(
 
 # load cur params
 state = torch.load("models/best_model.pth", map_location=device)
+model.eval()
 model.load_state_dict(state)      # strict=True by default
 
-model.eval()
+
 buckets = NUM_BUCKETS
 midpoints = BUCKET_MIDPOINTS
 
-def rank_moves(fen):
+def return_next_move(fen):
     board = chess.Board(fen) # set up current FEN
 
+    results = []
     for move in board.legal_moves:
         copy_board = board.copy()
         copy_board.push(move)
@@ -53,12 +56,17 @@ def rank_moves(fen):
         tokens = torch.from_numpy(tokens).long().unsqueeze(0).to(device)
     
         with torch.no_grad():
-            logp = model(tokens).squeeze(0)
-            p = logp.exp()
-            win_p = float((p * BUCKET_MIDPOINTS.to(p)).sum())
+            logits = model(tokens)
+            probs = torch.softmax(logits, dim = -1)
+            win_p = float((probs * torch.from_numpy(BUCKET_MIDPOINTS).to(device)).sum())
         
         results.append((move.uci(), win_p))
     
     results.sort(key=lambda x: x[1]) 
-    return results # these are ascending so we could essentially minimize parents value
+    return results
+    
+
+next_move = return_next_move("6k1/5P2/6K1/8/8/8/8/8 w - - 0 1")
+print(next_move)
+
 
