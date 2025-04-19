@@ -7,30 +7,23 @@ import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from fen_conv import convert_to_token
+from fen_conv import convert_to_token, win_to_bucket
 from infra import TransformerDecoder
-
-# Load and preprocess data
-df = pd.read_csv('chessbench_sample.csv')
-print(len(df))
-print(df.head())
 
 def tensorize(data_df):
     tokens = [convert_to_token(fen) for fen in data_df['fen']]
     tokens = np.stack(tokens)
-    scores = data_df['win_percent'].values
+    winpct = data_df['win_percent'].to_numpy(dtype=np.float32)  # 0‑1
+    bucket = win_to_bucket(winpct).astype(np.int64)
     # Convert tokens to torch.long type
     X = torch.from_numpy(tokens).long()
-    y = torch.from_numpy(scores).float()
+    y = torch.from_numpy(bucket)
     return X, y
 
-X, y = tensorize(df)
-
-# Custom Dataset class
 class ChessDataset(Dataset):
-    def __init__(self, X, y):
-        self.X = X
-        self.y = y
+    def __init__(self, path):
+        df = pd.read_csv(path)
+        self.X, self.y = tensorize(df)
         
     def __len__(self):
         return len(self.X)
@@ -39,7 +32,8 @@ class ChessDataset(Dataset):
         return self.X[idx], self.y[idx]
 
 # Split data into train and validation sets
-dataset = ChessDataset(X, y)
+dataset = ChessDataset('chessbench_state.csv')
+
 train_size = int(0.9 * len(dataset))
 val_size = len(dataset) - train_size
 train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
@@ -50,14 +44,14 @@ train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
 # Model hyperparameters
-action_size = 31  # possible chars for fen conv
-seq_len = 77      # Sequence length from fen_conv.py
+action_size = 31  
+seq_len = 77      
 d_model = 256
 num_layers = 8
 num_heads = 8
 d_ff = d_model * 4
 dropout = 0.1
-output_size = 1
+output_size = 128
 
 if torch.backends.mps.is_available():
     device = torch.device("mps")
@@ -90,7 +84,7 @@ total_params = count_parameters(model)
 print(f"Total params: {total_params:,}")
 
 # Loss function and optimizer
-criterion = nn.MSELoss()
+criterion = nn.CrossEntropyLoss(reduction='mean') #need to add HL guass smoothing later
 optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 # use this later
 # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
@@ -104,11 +98,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
         batch_X, batch_y = batch_X.to(device), batch_y.to(device)
         
         # Forward pass
-        outputs = model(batch_X)
-        # Reshape outputs to match target shape
-        outputs = outputs.squeeze(-1) # rm batch dim
-        
-        loss = criterion(outputs, batch_y)
+        logits = model(batch_X)
+        loss = criterion(logits, batch_y)
 
         optimizer.zero_grad()
         loss.backward()

@@ -1,6 +1,15 @@
 import numpy as np
 import chess
 
+NUM_BUCKETS = 128       
+FULL   = np.linspace(0.0, 1.0, NUM_BUCKETS + 1, dtype=np.float32)
+BUCKET_EDGES = FULL[1:-1]              
+BUCKET_MIDPOINTS = (FULL[:-1] + FULL[1:]) * 0.5
+
+def win_to_bucket(win_pct: float | np.ndarray) -> np.ndarray:
+    """Map win% in [0,1] → integer bucket id 0 … K-1 (vectorised)."""
+    return np.searchsorted(BUCKET_EDGES, win_pct, side='left')
+
 chars = ['0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f','g','h',
     'p','n','r','k','q','P','B','N','R','Q','K','w','.',]
 

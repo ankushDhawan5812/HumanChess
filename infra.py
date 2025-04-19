@@ -170,18 +170,19 @@ class TransformerDecoder(nn.Module):
 
         pooled_out = x[:, 0, :]  # (batch_size, d_model)
         logits = self.linear_out(pooled_out)  # (batch_size, output_size)
+        logits = torch.log_softmax(logits, dim = -1)
         return logits
 
 if __name__ == "__main__":
     # Hyperparameters
-    action_size = 1000
+    action_size = 31
     seq_len = 77
     d_model = 256
     num_layers = 4
     num_heads = 8
     d_ff = d_model * 4
     dropout = 0.1
-    output_size = 128  
+    output_size = 1
     
     model = TransformerDecoder(
         num_layers=num_layers,

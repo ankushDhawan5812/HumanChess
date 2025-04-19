@@ -16,7 +16,7 @@ ACTION_CODER = TupleCoder((
     FloatCoder(), #win percent
 ))
 
-def bag_to_sv_dataframe(path: str, limit: int | None) -> pd.DataFrame:
+def bag_to_sv_dataframe(path: str, limit):
     rows, rdr = [], BagReader(path)
     for i, raw in enumerate(rdr):
         if limit is not None and i >= limit:
@@ -25,7 +25,7 @@ def bag_to_sv_dataframe(path: str, limit: int | None) -> pd.DataFrame:
         rows.append({"fen": fen, "win_percent": win_p})
     return pd.DataFrame(rows)
 
-def bag_to_av_dataframe(path: str, limit: int | None) -> pd.DataFrame:
+def bag_to_av_dataframe(path: str, limit):
     rows, rdr = [], BagReader(path)
     for i, raw in enumerate(rdr):
         if limit is not None and i >= limit:
