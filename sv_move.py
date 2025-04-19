@@ -49,7 +49,7 @@ def rank_moves(fen):
         copy_board = board.copy()
         copy_board.push(move)
         new_fen = copy_board.fen()
-        tokens = convert_to_token(new_fen)
+        tokens = convert_to_token(new_fen) #this new fen will be the state of the opponent, so we want to choose the lowest score here
         tokens = torch.from_numpy(tokens).long().unsqueeze(0).to(device)
     
         with torch.no_grad():

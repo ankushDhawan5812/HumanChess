@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, random_split
 import pandas as pd
 import numpy as np
@@ -7,17 +8,17 @@ import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from fen_conv import convert_to_token, win_to_bucket
+from fen_conv import convert_to_token, win_to_bucket, hl_gauss
 from infra import TransformerDecoder
 
 def tensorize(data_df):
     tokens = [convert_to_token(fen) for fen in data_df['fen']]
     tokens = np.stack(tokens)
     winpct = data_df['win_percent'].to_numpy(dtype=np.float32)  # 0‑1
-    bucket = win_to_bucket(winpct).astype(np.int64)
+    buckets = hl_gauss(winpct)
     # Convert tokens to torch.long type
     X = torch.from_numpy(tokens).long()
-    y = torch.from_numpy(bucket)
+    y = torch.from_numpy(buckets)
     return X, y
 
 class ChessDataset(Dataset):
@@ -84,7 +85,8 @@ total_params = count_parameters(model)
 print(f"Total params: {total_params:,}")
 
 # Loss function and optimizer
-criterion = nn.CrossEntropyLoss(reduction='mean') #need to add HL guass smoothing later
+#criterion = nn.CrossEntropyLoss(reduction='mean') #need to add HL guass smoothing later
+criterion = nn.KLDivLoss(reduction='batchmean')
 optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 # use this later
 # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
@@ -99,7 +101,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
         
         # Forward pass
         logits = model(batch_X)
-        loss = criterion(logits, batch_y)
+        logp = F.log_softmax(logits, dim=1)
+        loss = criterion(logp, batch_y)
 
         optimizer.zero_grad()
         loss.backward()
@@ -122,15 +125,15 @@ def validate(model, val_loader, criterion, device):
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
             
             outputs = model(batch_X)
-            outputs = outputs.squeeze(-1)
+            logp = F.log_softmax(outputs, dim=1)
             
-            loss = criterion(outputs, batch_y)
+            loss = criterion(logp, batch_y)
             total_loss += loss.item()
     
     return total_loss / len(val_loader)
 
 # Training loop
-num_epochs = 50
+num_epochs = 12
 best_val_loss = float('inf')
 train_losses = []
 val_losses = []

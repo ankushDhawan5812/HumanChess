@@ -61,7 +61,7 @@ class FeedForwardBlock(nn.Module):
         self.linear2 = nn.Linear(d_ff, d_model)
     
     def forward(self, x):
-        return self.linear2(self.dropout(F.relu(self.linear1(x))))
+        return self.linear2(self.dropout(F.gelu(self.linear1(x)))) # changed to GELU here, might help the model
 
 # multihead attention implemented as deepmind
 class MultiHeadAttention(nn.Module):
@@ -170,7 +170,7 @@ class TransformerDecoder(nn.Module):
 
         pooled_out = x[:, 0, :]  # (batch_size, d_model)
         logits = self.linear_out(pooled_out)  # (batch_size, output_size)
-        logits = torch.log_softmax(logits, dim = -1)
+        # slight error here where I was pre applying the softmax, which we shouldnt do for cross entropy loss
         return logits
 
 if __name__ == "__main__":
