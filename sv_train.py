@@ -47,7 +47,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     # Split data into train and validation sets
-    dataset = ChessDataset('chessbench_state.csv')
+    dataset = ChessDataset('chessbench_state_train.csv')
 
     train_size = int(0.9 * len(dataset))
     val_size = len(dataset) - train_size
