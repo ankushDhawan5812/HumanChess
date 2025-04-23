@@ -7,6 +7,7 @@ import numpy as np
 import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from torch.utils.data import IterableDataset
 
 from fen_conv import convert_to_token, win_to_bucket, hl_gauss
 from infra import TransformerDecoder
@@ -34,6 +35,32 @@ class ChessDataset(Dataset):
     
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
+    
+class ChessCSVDataset(IterableDataset):
+    def __init__(self, path, skiprows=0, nrows=None, chunksize=50000):
+        self.path = path
+        self.skiprows = skiprows
+        self.nrows = nrows
+        self.chunksize = chunksize
+
+    def __iter__(self):
+        for df_chunk in pd.read_csv(
+            self.path, 
+            skiprows=1 + self.skiprows, 
+            nrows=self.nrows, 
+            chunksize=self.chunksize,
+            names = ['fen', 'win_percent'],
+            header=None
+        ):
+            X_chunk, y_chunk = tensorize(df_chunk)
+            for x, y in zip(X_chunk, y_chunk):
+                yield x, y
+    
+    def __len__(self):
+        if self.nrows is not None:
+            return self.nrows
+        else:
+            return 529000000  # Your total dataset size
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -47,16 +74,17 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     # Split data into train and validation sets
-    dataset = ChessDataset('chessbench_state_train.csv')
+    n_total = 150310444
 
-    train_size = int(0.9 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    train_size = int(0.9 * n_total)
+    val_size = n_total - train_size
+    train_dataset = ChessCSVDataset('chessbench_state_train.csv', skiprows=0, nrows=train_size)
+    val_dataset = ChessCSVDataset('chessbench_state_train.csv', skiprows=train_size, nrows=val_size)
 
     # Create data loaders
     batch_size = 64
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=0)
 
     # Model hyperparameters
     action_size = 31  
@@ -67,7 +95,6 @@ if __name__ == "__main__":
     d_ff = d_model * 4
     dropout = 0.1
     output_size = 128
-
     if torch.backends.mps.is_available():
         device = torch.device("mps")
         print("Using Apple Metal GPU")
@@ -125,9 +152,14 @@ if __name__ == "__main__":
     def train_epoch(model, train_loader, criterion, optimizer, device):
         model.train()
         total_loss = 0
-        
-        for batch_X, batch_y in tqdm(train_loader, desc="Training"):
+        num_batches = 0
+
+        total_batches = len(train_loader.dataset) // batch_size
+        print(f"Total batches in this epoch: {total_batches}")
+
+        for batch_X, batch_y in tqdm(train_loader, desc="Training", total=total_batches):
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+            num_batches += 1
             
             # Forward pass
             logits = model(batch_X)
@@ -143,16 +175,23 @@ if __name__ == "__main__":
             
             total_loss += loss.item()
         
-        return total_loss / len(train_loader)
-
+        return total_loss / num_batches
+    
     # Validation function
     def validate(model, val_loader, criterion, device):
         model.eval()
         total_loss = 0
-        
+        # batch_size = 0
+
+        total_batches = len(val_loader.dataset) // 64 # val_loader.batch_size
+        print(f"Total batches in validation: {total_batches}")
+
+        batch_size = 0
+
         with torch.no_grad():
-            for batch_X, batch_y in tqdm(val_loader, desc="Validation"):
+            for batch_X, batch_y in tqdm(val_loader, desc="Validation", total=total_batches):
                 batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+                batch_size += 1
                 
                 outputs = model(batch_X)
                 logp = F.log_softmax(outputs, dim=1)
@@ -160,7 +199,7 @@ if __name__ == "__main__":
                 loss = criterion(logp, batch_y)
                 total_loss += loss.item()
         
-        return total_loss / len(val_loader)
+        return total_loss / batch_size
 
     # Training loop
     num_epochs = 12

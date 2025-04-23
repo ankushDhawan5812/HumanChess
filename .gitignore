@@ -3,3 +3,4 @@ state_value_data.bag
 chessbench_state.csv
 chessbench_state_test.csv
 chessbench_state_train.csv
+training_loss.png
