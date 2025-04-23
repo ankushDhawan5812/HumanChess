@@ -5,7 +5,7 @@ import chess
 
 action_size = 31        
 seq_len     = 77
-d_model     = 384
+d_model     = 256
 num_layers  = 8
 num_heads   = 8
 d_ff        = d_model * 4
