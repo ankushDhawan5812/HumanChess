@@ -79,69 +79,43 @@ class MultiHeadAttention2D(nn.Module):
         self.linear_out = nn.Linear(d_model, d_model, bias=False)
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(d_model)
-
-        offsets = 15
-        self.aQ = nn.Parameter(torch.zeros(num_heads, offsets, offsets, d_model // num_heads))
-        self.aK = nn.Parameter(torch.zeros(num_heads, offsets, offsets, d_model // num_heads))
-        self.aV = nn.Parameter(torch.zeros(num_heads, offsets, offsets, d_model // num_heads))
-        nn.init.xavier_uniform_(self.aQ)
-        nn.init.xavier_uniform_(self.aK)
-        nn.init.xavier_uniform_(self.aV)
-
+        
+        # Modified approach: use a more standard attention but with a learned bias
+        # This maintains the 2D spatial information while being much more efficient
+        self.rel_bias = nn.Parameter(torch.zeros(1, num_heads, 78, 78))
+        nn.init.xavier_uniform_(self.rel_bias)
     
     def forward(self, query, key, value, token_coords, mask=None):
-        # query: (batch_size, seq_len, d_model)
         batch_size, seq_len, _ = query.size()
         
-        # project
+        # Project inputs    
         Q = self.linear_q(query)
         K = self.linear_k(key)
         V = self.linear_v(value)
-
+        
         if self.apply_qk_layernorm:
             Q = self.layer_norm(Q)
             K = self.layer_norm(K)
         
-        # Reshape for multi-head: (batch_size, num_heads, seq_len, d_k), has to be done to account for each head getting the 
-        # the right context (like it needs to see like a set of values for all embeddings across classes to understand relation)
-        Q = Q.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1,2)
-        K = K.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1,2)
-        V = V.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1,2)
+        Q = Q.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
+        K = K.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
+        V = V.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
         
-        if not hasattr(self, 'diff_row'):
-            coords = token_coords
-            diff = coords[:, None] - coords[None, :] # basically just getting piecewise differences at indices
-            row_difference = diff[:, :, 0] + 7 # like the index [0, i, j] will be the r_i - r_j + 7, to ge an offset in range [0, 14] for indexing
-            col_difference = diff[:, :, 1] + 7 # same here
-            mask_loc = (coords[:, 0] >= 0) & (coords[:, 1] >= 0) # vector if booth coords in range of the board, rm pooling token and the others that aren't actually locations
-            idx = mask_loc[:, None] & mask_loc[None, :] # get n by n expansion for the bool matrix mask_loc
-            idx_4d = idx.unsqueeze(0).unsqueeze(-1)
-            self.register_buffer('diff_row', row_difference)
-            self.register_buffer('diff_col', col_difference)
-            self.register_buffer('mult', idx_4d)
+        attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
         
-        # bias calcs
-        bq = self.aQ[:, self.diff_row, self.diff_col] * self.mult
-        bk = self.aK[:, self.diff_row, self.diff_col] * self.mult
-        bv = self.aV[:, self.diff_row, self.diff_col] * self.mult
-
-        Q_b = Q.unsqueeze(3) + bq.unsqueeze(0)
-        K_b = K.unsqueeze(2) + bk.unsqueeze(0)
-
-        #scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
-        scores = (Q_b * K_b).sum(-1) / (math.sqrt(self.d_k))
+        # Only use what we need for the current sequence length
+        rel_bias = self.rel_bias[:, :, :seq_len, :seq_len]
+        attn_scores = attn_scores + rel_bias
+        
         if mask is not None:
-            # we don't need mask for this hopefully
-            scores = scores.masked_fill(mask == 0, float('-inf'))
-        attn = F.softmax(scores, dim=-1)
+            attn_scores = attn_scores.masked_fill(mask == 0, float('-inf'))
+        
+        attn = F.softmax(attn_scores, dim=-1)
         attn = self.dropout(attn)
-
-        V_b = V.unsqueeze(2) + bv.unsqueeze(0)
-        v_attn = attn.unsqueeze(-1) * V_b
-        context = v_attn.sum(dim=3)
-        context = context.transpose(1,2).contiguous().view(batch_size, seq_len, self.d_model) # add back together as final output of attention layer
-        output = self.linear_out(context)
-        return output
+        
+        context = torch.matmul(attn, V)
+        context = context.transpose(1, 2).contiguous().view(batch_size, seq_len, self.d_model)
+        return self.linear_out(context)
 
 class TransformerDecoderBlock2D(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout, use_causal_mask=True, apply_qk_layernorm=False):
