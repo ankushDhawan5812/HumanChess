@@ -74,7 +74,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     # Split data into train and validation sets
-    n_total = 150310444
+    n_total = 530310444
 
     train_size = int(0.9 * n_total)
     val_size = n_total - train_size
