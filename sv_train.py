@@ -60,7 +60,7 @@ class ChessCSVDataset(IterableDataset):
         if self.nrows is not None:
             return self.nrows
         else:
-            return 529000000  # Your total dataset size
+            return 650000#550310444  # Your total dataset size
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -74,12 +74,12 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     # Split data into train and validation sets
-    n_total = 150310444
+    n_total = 65000
 
     train_size = int(0.9 * n_total)
     val_size = n_total - train_size
-    train_dataset = ChessCSVDataset('chessbench_state_train.csv', skiprows=0, nrows=train_size)
-    val_dataset = ChessCSVDataset('chessbench_state_train.csv', skiprows=train_size, nrows=val_size)
+    train_dataset = ChessCSVDataset('chessbench_state.csv', skiprows=0, nrows=train_size)
+    val_dataset = ChessCSVDataset('chessbench_state.csv', skiprows=train_size, nrows=val_size)
 
     # Create data loaders
     batch_size = 64
@@ -121,17 +121,16 @@ if __name__ == "__main__":
 
     if args.kind == "2":
         model = TransformerDecoder2D(
-        num_layers=num_layers,
-        d_model=d_model,
-        num_heads=num_heads,
-        d_ff=d_ff,
-        dropout=dropout,
-        action_size=action_size,
-        seq_len=seq_len,
-        output_size=output_size,
-        use_causal_mask=False,
-        apply_qk_layernorm=False
-    )
+            num_layers=num_layers,
+            d_model=d_model,
+            num_heads=num_heads,
+            d_ff=d_ff,
+            dropout=dropout,
+            action_size=action_size,            seq_len=seq_len,
+            output_size=output_size,
+            max_distance=8,         # how far apart (in grid steps) you want to model relative bias
+            use_causal_mask=False    # keep as False unless you need an autoregressive mask
+       )
 
     model.to(device)
     # n_params to see
