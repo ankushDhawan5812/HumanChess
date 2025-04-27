@@ -10,7 +10,6 @@ class InputEmbeddings2D(nn.Module):
         self.embedding = nn.Embedding(action_size, d_model)
 
     def forward(self, x):
-        # x: [batch_size, seq_len]
         return self.embedding(x) * self.scale
 
 class PositionalEncoding2D(nn.Module):
@@ -138,7 +137,6 @@ class TransformerDecoder2D(nn.Module):
         self.register_buffer('token_coords', token_coords)
         # positional encoding
         self.pos_enc = PositionalEncoding2D(d_model, seq_len+1, dropout)
-        # decoder blocks
         self.layers = nn.ModuleList([
             TransformerDecoderBlock2D(d_model, num_heads, d_ff, dropout, token_coords, max_distance, use_causal_mask)
             for _ in range(num_layers)
@@ -146,13 +144,11 @@ class TransformerDecoder2D(nn.Module):
         self.out_proj = nn.Linear(d_model, output_size or action_size)
 
     def forward(self, x, padding_mask=None):
-        # x: [B, seq_len]
         B, L = x.shape
         emb = self.input_emb(x)
         pool = self.pool.expand(B,-1,-1)
         x = torch.cat([pool, emb], dim=1)
         x = self.pos_enc(x)
-        # build mask
         mask = None
         if padding_mask is not None:
             pad = padding_mask.unsqueeze(1).unsqueeze(1)  # [B,1,1,L]
