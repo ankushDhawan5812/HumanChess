@@ -6,7 +6,7 @@ import chess
 action_size = 31        
 seq_len     = 77
 d_model     = 256
-num_layers  = 8
+num_layers  = 12
 num_heads   = 8
 d_ff        = d_model * 4
 dropout     = 0.1
@@ -66,7 +66,8 @@ def return_next_move(fen):
     return results
     
 
-next_move = return_next_move("6k1/5P2/6K1/8/8/8/8/8 w - - 0 1")
-print(next_move)
+#next_move = return_next_move("6k1/8/5PK1/8/8/8/8/8 w - - 0 1")
+#print(next_move)
 
 
+ 

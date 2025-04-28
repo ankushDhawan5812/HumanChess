@@ -23,13 +23,14 @@ class PositionalEncoding(nn.Module):
         self.seq_len = seq_len
         self.dropout = nn.Dropout(dropout)
 
-        pe = torch.zeros(seq_len, d_model)
-        position = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = torch.zeros(seq_len, d_model) # 77 x 256
+        position = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(1) # array of indices up to seq_len -> [0, 1, 2, 3, ] -> unsqueeze to make (seq_len, 1) -> 77 x 1
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)) # 128 length vector with calculated different freq values
+        
+        pe[:, 0::2] = torch.sin(position * div_term) # fills even indices of pe with sin of div_term
+        pe[:, 1::2] = torch.cos(position * div_term) # fills odd indices of pe with cos of div_term          
         # Shape becomes: (1, seq_len, d_model)
-        pe = pe.unsqueeze(0)
+        pe = pe.unsqueeze(0) #(1, 77, 256)
         self.register_buffer('pe', pe) # easy to get afterward
     
     def forward(self, x):
