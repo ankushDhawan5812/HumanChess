@@ -42,6 +42,15 @@ class ChessCSVDataset(IterableDataset):
         self.skiprows = skiprows
         self.nrows = nrows
         self.chunksize = chunksize
+        self._length = nrows if nrows is not None else self._compute_length()
+
+    def _compute_length(self):
+        # Count total rows in the file
+        with open(self.path, 'r') as f:
+            # Skip header
+            next(f)
+            # Count remaining rows
+            return sum(1 for _ in f)
 
     def __iter__(self):
         for df_chunk in pd.read_csv(
@@ -57,10 +66,7 @@ class ChessCSVDataset(IterableDataset):
                 yield x, y
     
     def __len__(self):
-        if self.nrows is not None:
-            return self.nrows
-        else:
-            return 650000#550310444  # Your total dataset size
+        return self._length
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -153,10 +159,7 @@ if __name__ == "__main__":
         total_loss = 0
         num_batches = 0
 
-        total_batches = len(train_loader.dataset) // batch_size
-        print(f"Total batches in this epoch: {total_batches}")
-
-        for batch_X, batch_y in tqdm(train_loader, desc="Training", total=total_batches):
+        for batch_X, batch_y in tqdm(train_loader, desc="Training"):
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
             num_batches += 1
             
@@ -174,31 +177,30 @@ if __name__ == "__main__":
             
             total_loss += loss.item()
         
-        return total_loss / num_batches
+        return total_loss / num_batches if num_batches > 0 else float('inf')
     
     # Validation function
     def validate(model, val_loader, criterion, device):
         model.eval()
         total_loss = 0
-        # batch_size = 0
+        num_batches = 0
 
-        total_batches = len(val_loader.dataset) // 64 # val_loader.batch_size
-        print(f"Total batches in validation: {total_batches}")
-
-        batch_size = 0
-
-        with torch.no_grad():
-            for batch_X, batch_y in tqdm(val_loader, desc="Validation", total=total_batches):
-                batch_X, batch_y = batch_X.to(device), batch_y.to(device)
-                batch_size += 1
-                
-                outputs = model(batch_X)
-                logp = F.log_softmax(outputs, dim=1)
-                
-                loss = criterion(logp, batch_y)
-                total_loss += loss.item()
-        
-        return total_loss / batch_size
+        try:
+            with torch.no_grad():
+                for batch_X, batch_y in tqdm(val_loader, desc="Validation"):
+                    batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+                    num_batches += 1
+                    
+                    outputs = model(batch_X)
+                    logp = F.log_softmax(outputs, dim=1)
+                    
+                    loss = criterion(logp, batch_y)
+                    total_loss += loss.item()
+            
+            return total_loss / num_batches if num_batches > 0 else float('inf')
+        except Exception as e:
+            print(f"Error during validation: {str(e)}")
+            return float('inf')
 
     # Training loop
     num_epochs = 12
