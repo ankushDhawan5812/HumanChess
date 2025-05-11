@@ -9,6 +9,7 @@ from fen_conv import convert_to_token
 from model_v2 import load_base_model
 from lora import LoRALayer
 import re
+from tqdm import tqdm
 
 
 def add_lora_layers(model, rank, alpha):
@@ -102,7 +103,7 @@ def train_lora(model, train_loader, val_loader, epochs, lr, device='cuda'):
                 for batch_X, batch_y in val_loader:
                     batch_X, batch_y = batch_X.to(device), batch_y.to(device)
                     logits = model(batch_X)
-                    logp = F.log_softmax(outputs, dim=1)
+                    logp = F.log_softmax(logits, dim=1)
                     loss = criterion(logp, batch_y)
                     val_loss += loss.item()
             
@@ -136,7 +137,12 @@ def load_lora_weights(model, path):
 def main():
     model, device = load_base_model()
     add_lora_to_model(model, rank=8, alpha=32)
-    
+
+    input_dim = model.out_proj.in_features
+    model.out_proj = nn.Linear(input_dim, 1968)  # 1968 possible chess moves
+    nn.init.normal_(model.out_proj.weight, std=0.02)
+    nn.init.zeros_(model.out_proj.bias)
+
     # need to figure out path
     # dataset = ChessDataset("noisy_fen_dataset.csv")
 
