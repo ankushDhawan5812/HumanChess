@@ -53,11 +53,18 @@ def calc_encoding(cur_id, top_6_winps, top_6_ids, target_winp):
         encoding[top_6_ids[i]] = SCALE * similarities[i] / total_similarity  # invert win percentages
 
     encoding[encoding == 0] = EPSILON # add epsilon
+    encoding[cur_id] = 0.0 # set current move to 0
     encoding = encoding / np.sum(encoding) # normalize to sum to 1
+
+    # print("Current ID: ", encoding[cur_id])
 
     encoding = encoding * (SCALE / (np.sum(encoding)))
 
-    encoding[cur_id] = 1 - SCALE
+    # print(np.sum(encoding))
+
+    encoding[cur_id] = 1.0 - SCALE
+    # print(1 - SCALE)
+    # print(np.sum(encoding))
     return encoding
 
 def main():
@@ -67,8 +74,8 @@ def main():
     new_fen_df = pd.DataFrame(columns=["FEN"] + str_indexes)
 
     fen_df = pd.read_csv("chess_data_1200_1800.csv")
-    for i in range(10):
-    # for i in range(len(fen_df))
+    # for i in range(10):
+    for i in range(len(fen_df)):
         fen = fen_df.iloc[i, 0]
         move = fen_df.iloc[i, 1]
         print(f"Processing {i+1}/{len(fen_df)}: FEN: {fen}, Move: {move}")
@@ -90,6 +97,9 @@ def main():
         top_6_ids = [move_to_id(top_6_moves[i][0]) for i in range(len(top_6_moves))]
 
         encoding = calc_encoding(move_to_id(move), top_6_winps, top_6_ids, target_move[1])
+
+        print(encoding)
+        print(np.sum(encoding))
 
         data = {"FEN": [fen]}
         for i in range(len(encoding)):

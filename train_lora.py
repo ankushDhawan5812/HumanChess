@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from fen_conv import convert_to_token
 from model_v2 import load_base_model
+import lora 
 from lora import LoRALayer
 import re
 from tqdm import tqdm
@@ -136,15 +137,16 @@ def load_lora_weights(model, path):
 
 def main():
     model, device = load_base_model()
-    add_lora_to_model(model, rank=8, alpha=32)
-
     input_dim = model.out_proj.in_features
+    add_lora_layers(model, rank=8, alpha=32)
+
+    
     model.out_proj = nn.Linear(input_dim, 1968)  # 1968 possible chess moves
     nn.init.normal_(model.out_proj.weight, std=0.02)
     nn.init.zeros_(model.out_proj.bias)
 
     # need to figure out path
-    # dataset = ChessDataset("noisy_fen_dataset.csv")
+    dataset = ChessDataset("noisy_fen_dataset_1200_1800_small.csv")
 
     train_size = int(0.9 * len(dataset))
     val_size = len(dataset) - train_size
@@ -155,6 +157,7 @@ def main():
     
     model = train_lora(model, train_loader, val_loader, epochs=10, lr=1e-3, device=device)
     
+    elo_range = "1200_1800"  # Example elo range, adjust as needed
     save_lora_weights(model, f"lora_weights_{elo_range}.pt")
 
 if __name__ == "__main__":

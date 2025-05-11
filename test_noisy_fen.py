@@ -10,7 +10,7 @@ for i in range(len(data)):
     # fen = data.iloc[i, 0]
     
     # Get the encoding - all other columns
-    encoding = data.iloc[i, 2:]
+    encoding = data.iloc[i, 1:]
     encoding = encoding.to_numpy()
     encoding = encoding.astype(np.float32)
     print(np.sum(encoding))
