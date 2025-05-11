@@ -28,8 +28,9 @@ from sv_move import return_next_move
 SCALE = 0.75
 EPSILON = 0.00001
 
+model, device = load_base_model()
+
 def get_win_percentage(fen):
-    model, device = load_base_model()
     tokens = convert_to_token(fen) #this new fen will be the state of the opponent, so we want to choose the lowest score here
     tokens = torch.from_numpy(tokens).long().unsqueeze(0).to(device)
     
@@ -57,19 +58,21 @@ def calc_encoding(cur_id, top_6_winps, top_6_ids):
 
 def main():
     # read in current fen string
-    new_fen_df = pd.DataFrame(columns=["FEN","Encoding"])
+    indexes = np.arange(0, 1968)
+    str_indexes = [str(i) for i in indexes]
+    new_fen_df = pd.DataFrame(columns=["FEN"] + str_indexes)
 
-    fen_df = pd.read_csv("fen_dataset.csv")
-    for i in range(len(fen_df)):
+    fen_df = pd.read_csv("chess_data_1200_1800.csv")
+    for i in range(10):
+    # for i in range(len(fen_df))
         fen = fen_df.iloc[i, 0]
-        action = fen_df.iloc[i, 1]
-        print(f"Processing {i+1}/{len(fen_df)}: FEN: {fen}, Action: {action}")
+        move = fen_df.iloc[i, 1]
+        print(f"Processing {i+1}/{len(fen_df)}: FEN: {fen}, Move: {move}")
 
         # get next fen string win percentage
         board = chess.Board(fen)
         copy_board = board.copy()
-        move = id_to_move(action)
-        copy_board.push(move)
+        copy_board.push(chess.Move.from_uci(move))
         new_fen = copy_board.fen()
         new_fen_winp = get_win_percentage(new_fen)
 
@@ -83,11 +86,13 @@ def main():
 
         encoding = calc_encoding(move_to_id(move), top_6_winps, top_6_ids)
 
-        df_i = pd.DataFrame(columns=["FEN", "Encoding"])
-        df_i = pd.DataFrame({"FEN": [fen], "Encoding": [encoding]})
+        data = {"FEN": [fen]}
+        for i in range(len(encoding)):
+            data[str_indexes[i]] = [encoding[i]]
+        df_i = pd.DataFrame(data)
         new_fen_df = pd.concat([new_fen_df, df_i], ignore_index=True)
 
-    new_fen_df.to_csv('noisy_fen_dataset.csv')
+    new_fen_df.to_csv('noisy_fen_dataset.csv', index=False)
 
 if __name__ == "__main__":
     main()

@@ -1,12 +1,13 @@
 import torch
-from infra import TransformerDecoder   
+from infra import TransformerDecoder
+from infra_2d import TransformerDecoder2D
 from fen_conv import NUM_BUCKETS, BUCKET_MIDPOINTS, convert_to_token   
 import chess
 
 action_size = 31        
 seq_len     = 77
 d_model     = 256
-num_layers  = 12
+num_layers  = 8
 num_heads   = 8
 d_ff        = d_model * 4
 dropout     = 0.1
@@ -22,21 +23,21 @@ else:
     device = torch.device("cpu")
     print("Using CPU")
 
-model = TransformerDecoder(
+model = TransformerDecoder2D(
     num_layers=num_layers,
     d_model=d_model,
     num_heads=num_heads,
     d_ff=d_ff,
     dropout=dropout,
-    action_size=action_size,
+    action_size=action_size,            
     seq_len=seq_len,
     output_size=output_size,
-    use_causal_mask=False,
-    apply_qk_layernorm=False,
+    max_distance=8,         # how far apart (in grid steps) you want to model relative bias
+    use_causal_mask=False    # keep as False unless you need an autoregressive mask
 ).to(device)
 
 # load cur params
-state = torch.load("models/best_model.pth", map_location=device)
+state = torch.load("models/model_epoch_2.pth", map_location=device)
 model.eval()
 model.load_state_dict(state)      # strict=True by default
 
