@@ -41,17 +41,21 @@ def get_win_percentage(fen):
 
     return win_p
 
-def calc_encoding(cur_id, top_6_winps, top_6_ids):
+def calc_encoding(cur_id, top_6_winps, top_6_ids, target_winp):
 
     encoding = np.zeros(1968, dtype=float)
 
-    for i in range(len(top_6_ids)):
-        encoding[top_6_ids[i]] = 1.0 / top_6_winps[i] # invert win percentages
+    deltas = [abs(target_winp - winp) for winp in top_6_winps]
+    similarities = [1.0 / (delta + 0.001) for delta in deltas]
+    total_similarity = sum(similarities)
 
-    encoding += EPSILON # add epsilon
+    for i in range(len(top_6_ids)):
+        encoding[top_6_ids[i]] = SCALE * similarities[i] / total_similarity  # invert win percentages
+
+    encoding[encoding == 0] = EPSILON # add epsilon
     encoding = encoding / np.sum(encoding) # normalize to sum to 1
 
-    encoding *= SCALE
+    encoding = encoding * (SCALE / (np.sum(encoding)))
 
     encoding[cur_id] = 1 - SCALE
     return encoding
@@ -80,11 +84,12 @@ def main():
         results = return_next_move(fen)
         sorted_results = sorted(results, key=lambda x: abs(x[1] - new_fen_winp)) # Sort results by the absolute difference in win percentage
         top_6_moves = sorted_results[1:7]  # Skip the first one as it is the current move, select the top 6 moves closest to the current win percentage, excluding the current move
-        
+        target_move = sorted_results[0]
+
         top_6_winps = [top_6_moves[i][1] for i in range(len(top_6_moves))] # sorted by the deltas
         top_6_ids = [move_to_id(top_6_moves[i][0]) for i in range(len(top_6_moves))]
 
-        encoding = calc_encoding(move_to_id(move), top_6_winps, top_6_ids)
+        encoding = calc_encoding(move_to_id(move), top_6_winps, top_6_ids, target_move[1])
 
         data = {"FEN": [fen]}
         for i in range(len(encoding)):
