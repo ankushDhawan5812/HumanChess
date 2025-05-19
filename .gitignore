@@ -3,3 +3,10 @@ state_value_data.bag
 chessbench_state.csv
 chessbench_state_test.csv
 chessbench_state_train.csv
+chess_data*
+lora_weights*
+lichess_db*
+models/*
+noisy_fen_dataset_1200_1800_small.csv
+.DS_Store
+__pycache__/*
