@@ -73,7 +73,7 @@ def main():
             new_fen_winp = get_win_percentage(new_fen)
             
             # Get next top moves with closest win percentages
-            results = return_next_move(fen)
+            results = return_next_move_subsample(fen, num_moves=5)
             sorted_results = sorted(results, key=lambda x: abs(x[1] - new_fen_winp))
             num_moves = 3
             top_6_moves = sorted_results[1:num_moves+1]
