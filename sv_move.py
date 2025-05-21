@@ -67,7 +67,7 @@ def return_next_move(fen):
     results.sort(key=lambda x: x[1]) 
     return results
 
-def return_next_move_subsample(fen):
+def return_next_move_subsample(fen, num_moves = 5):
     board = chess.Board(fen) # set up current FEN
     
     # Get all legal moves
@@ -75,8 +75,8 @@ def return_next_move_subsample(fen):
     
     # Take up to 25 random moves
     
-    if len(legal_moves) > 5:
-        legal_moves = random.sample(legal_moves, 5)
+    if len(legal_moves) > num_moves:
+        legal_moves = random.sample(legal_moves, num_moves)
     
     results = []
     for move in legal_moves:
