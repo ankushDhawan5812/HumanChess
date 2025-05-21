@@ -3,6 +3,7 @@ from infra import TransformerDecoder
 from infra_2d import TransformerDecoder2D
 from fen_conv import NUM_BUCKETS, BUCKET_MIDPOINTS, convert_to_token   
 import chess
+import random
 
 action_size = 31        
 seq_len     = 77
@@ -11,7 +12,7 @@ num_layers  = 8
 num_heads   = 8
 d_ff        = d_model * 4
 dropout     = 0.1
-output_size = 128       
+output_size = 128  
 
 if torch.backends.mps.is_available():
     device = torch.device("mps")
@@ -64,6 +65,36 @@ def return_next_move(fen):
         results.append((move.uci(), win_p))
     
     results.sort(key=lambda x: x[1]) 
+    return results
+
+def return_next_move_subsample(fen):
+    board = chess.Board(fen) # set up current FEN
+    
+    # Get all legal moves
+    legal_moves = list(board.legal_moves)
+    
+    # Take up to 25 random moves
+    
+    if len(legal_moves) > 5:
+        legal_moves = random.sample(legal_moves, 5)
+    
+    results = []
+    for move in legal_moves:
+        copy_board = board.copy()
+        copy_board.push(move)
+        new_fen = copy_board.fen()
+        tokens = convert_to_token(new_fen) #this new fen will be the state of the opponent, so we want to choose the lowest score here
+        tokens = torch.from_numpy(tokens).long().unsqueeze(0).to(device)
+        
+        with torch.no_grad():
+            logits = model(tokens)
+            probs = torch.softmax(logits, dim = -1)
+            win_p = float((probs * torch.from_numpy(BUCKET_MIDPOINTS).to(device)).sum())
+            
+        results.append((move.uci(), win_p))
+    
+    results.sort(key=lambda x: x[1])
+    
     return results
     
 
