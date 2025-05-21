@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import math
 from infra_2d import TransformerDecoder2D
 
-def load_base_model(model_path="models/model_epoch_2.pth"):
+def load_base_model(model_path="/content/model_epoch_4.pth"):
     """
     Load the base TransformerDecoder2D model
     """
