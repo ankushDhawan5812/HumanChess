@@ -37,7 +37,7 @@ model = TransformerDecoder2D(
 ).to(device)
 
 # load cur params
-state = torch.load("models/model_epoch_2.pth", map_location=device)
+state = torch.load("/content/model_epoch_4.pth", map_location=device)
 model.eval()
 model.load_state_dict(state)      # strict=True by default
 
