@@ -10,3 +10,5 @@ models/*
 noisy_fen_dataset_1200_1800_small.csv
 .DS_Store
 __pycache__/*
+DiffTune/data 
+DiffTune/trainer/model_epoch_7.pth

@@ -33,8 +33,8 @@ model = TransformerDecoder2D(
     action_size=action_size,            
     seq_len=seq_len,
     output_size=output_size,
-    max_distance=8,         # how far apart (in grid steps) you want to model relative bias
-    use_causal_mask=False    # keep as False unless you need an autoregressive mask
+    max_distance=8,         # how far apart you want to model relative bias
+    use_causal_mask=False   
 ).to(device)
 
 # load cur params
