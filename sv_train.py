@@ -57,14 +57,8 @@ class ChessCSVDataset(IterableDataset):
                 yield x, y
     
     def __len__(self):
-        if self.nrows is not None:
-            return self.nrows
-        else:
-<<<<<<< HEAD
-            return 529000000  # Your total dataset size
-=======
-            return 650000#550310444  # Your total dataset size
->>>>>>> ff04bfc99655bcc2bc1553eba59dc5f439464812
+        return self.nrows
+         
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -76,23 +70,24 @@ if __name__ == "__main__":
         required=True,
         help="1 = normal token position encodings |  2 = 2d chess board positional encodings",
     )
+    parser.add_argument(
+        "--accum_steps",
+        type=int,
+        default=4,
+        help="Number of gradient accumulation steps",
+    )
     args = parser.parse_args()
+    
+    # Gradient accumulation steps
+    accum_steps = args.accum_steps
+    
     # Split data into train and validation sets
-<<<<<<< HEAD
-    n_total = 150310444
+    n_total = 530310000
 
-    train_size = int(0.9 * n_total)
+    train_size = int(0.95 * n_total)
     val_size = n_total - train_size
     train_dataset = ChessCSVDataset('chessbench_state_train.csv', skiprows=0, nrows=train_size)
     val_dataset = ChessCSVDataset('chessbench_state_train.csv', skiprows=train_size, nrows=val_size)
-=======
-    n_total = 530310444
-
-    train_size = int(0.9 * n_total)
-    val_size = n_total - train_size
-    train_dataset = ChessCSVDataset('chessbench_state.csv', skiprows=0, nrows=train_size)
-    val_dataset = ChessCSVDataset('chessbench_state.csv', skiprows=train_size, nrows=val_size)
->>>>>>> ff04bfc99655bcc2bc1553eba59dc5f439464812
 
     # Create data loaders
     batch_size = 64
@@ -103,7 +98,7 @@ if __name__ == "__main__":
     action_size = 31  
     seq_len = 77      
     d_model = 256
-    num_layers = 4
+    num_layers = 8
     num_heads = 8
     d_ff = d_model * 4
     dropout = 0.1
@@ -139,37 +134,50 @@ if __name__ == "__main__":
             num_heads=num_heads,
             d_ff=d_ff,
             dropout=dropout,
-            action_size=action_size,            seq_len=seq_len,
+            action_size=action_size,
+            seq_len=seq_len,
             output_size=output_size,
             max_distance=8,         # how far apart (in grid steps) you want to model relative bias
             use_causal_mask=False    # keep as False unless you need an autoregressive mask
        )
-
+        
     model.to(device)
+
+    # Load a previously saved model
+    epoch_start = 7
+    checkpoint_path = f'/home/ankush/repos/chess_train/HumanChess/models/model_epoch_{epoch_start}.pth'
+    if os.path.exists(checkpoint_path):
+        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+        print(f"Loaded model from {checkpoint_path}")
+
     # n_params to see
     def count_parameters(model):
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
     total_params = count_parameters(model)
     print(f"Total params: {total_params:,}")
+    print(f"Using gradient accumulation with {accum_steps} steps (effective batch size: {batch_size * accum_steps})")
 
     # Loss function and optimizer
     #criterion = nn.CrossEntropyLoss(reduction='mean') #need to add HL guass smoothing later
     criterion = nn.KLDivLoss(reduction='batchmean')
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
     # use this later
-    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
 
     # Training function
-    def train_epoch(model, train_loader, criterion, optimizer, device):
+    def train_epoch(model, train_loader, criterion, optimizer, device, accum_steps):
         model.train()
         total_loss = 0
         num_batches = 0
 
         total_batches = len(train_loader.dataset) // batch_size
         print(f"Total batches in this epoch: {total_batches}")
-
-        for batch_X, batch_y in tqdm(train_loader, desc="Training", total=total_batches):
+        
+        # Zero gradients at the beginning
+        optimizer.zero_grad()
+        
+        for batch_idx, (batch_X, batch_y) in enumerate(tqdm(train_loader, desc="Training", total=total_batches)):
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
             num_batches += 1
             
@@ -177,15 +185,25 @@ if __name__ == "__main__":
             logits = model(batch_X)
             logp = F.log_softmax(logits, dim=1)
             loss = criterion(logp, batch_y)
-
-            optimizer.zero_grad()
+            
+            # Scale loss by accumulation steps
+            loss = loss / accum_steps
             loss.backward()
             
-            # grad clipping 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
+            # Update weights only every accum_steps batches
+            if (batch_idx + 1) % accum_steps == 0 or (batch_idx + 1 == total_batches):
+                # Gradient clipping
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+                optimizer.zero_grad()
             
-            total_loss += loss.item()
+            # Track the full loss (not scaled)
+            total_loss += loss.item() * accum_steps
+            
+            # Save checkpoint every 1,000,000 batches
+            if batch_idx > 0 and batch_idx % 1000000 == 0:
+                print(f"Saving checkpoint at batch {batch_idx}")
+                torch.save(model.state_dict(), f'models/checkpoint_batch.pth')
         
         return total_loss / num_batches
     
@@ -200,6 +218,9 @@ if __name__ == "__main__":
 
         batch_size = 0
 
+        print("Skipping validation")
+        return 0.0
+        
         with torch.no_grad():
             for batch_X, batch_y in tqdm(val_loader, desc="Validation", total=total_batches):
                 batch_X, batch_y = batch_X.to(device), batch_y.to(device)
@@ -225,33 +246,38 @@ if __name__ == "__main__":
     for epoch in range(num_epochs):
         print(f"Epoch {epoch+1}/{num_epochs}")
         
-        train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
-        val_loss = validate(model, val_loader, criterion, device)
+        train_loss = train_epoch(model, train_loader, criterion, optimizer, device, accum_steps)
+        # Save train loss to a file
+        with open('train_loss.txt', 'a') as f:
+            f.write(f"Epoch {epoch_start+epoch+1}: {train_loss:.4f}\n")
+        print("saving model")
+        torch.save(model.state_dict(), f'models/model_epoch_{epoch_start+epoch+1}.pth') #epoch start is loaded model
+        print("model saved")
+        # val_loss = validate(model, val_loader, criterion, device)
         
         train_losses.append(train_loss)
-        val_losses.append(val_loss)
+        # val_losses.append(val_loss)
         
-        print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+        # print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
         
         # Update learning rate
         # scheduler.step(val_loss)
+        scheduler.step(train_loss)
+        print(f"Train Loss: {train_loss:.4f}")
         
         # Save best model
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model.state_dict(), 'models/best_model.pth')
-            print(f"Model saved with validation loss: {val_loss:.4f}")
+        # if val_loss < best_val_loss:
+        #     best_val_loss = val_loss
+        #     torch.save(model.state_dict(), 'models/best_model.pth')
+        #     print(f"Model saved with validation loss: {val_loss:.4f}")
 
     # Plot training and validation losses
     plt.figure(figsize=(10, 6))
     plt.plot(train_losses, label='Training Loss')
-    plt.plot(val_losses, label='Validation Loss')
+    # plt.plot(val_losses, label='Validation Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.title('Training and Validation Losses')
     plt.legend()
     plt.savefig('training_loss.png')
     plt.close()
-
-   
-
