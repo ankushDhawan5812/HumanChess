@@ -14,10 +14,10 @@ from tqdm import tqdm
 def train(max_samples: int | None = 1000):
     batch_size = 10
     num_epochs = 10
-    lr = 3e-4
+    lr = 1e-5
     total_t = 20
-    betas = [(i + 1) / total_t for i in range(total_t)]
-    num_moves = 1968
+    betas = [(i + 1) / (total_t + 1) for i in range(total_t)]
+    num_moves = 2000
     elo_min, elo_max, bucket_size = 1200,1800,100
     d_elo = 256
 
@@ -75,7 +75,7 @@ def train(max_samples: int | None = 1000):
                 batch["s_tokens"],
                 batch["x_t"],
                 batch["elo_idx_float"],
-                # batch["t"]
+                batch["t"]
             )                                      
             x0 = batch["x_0"]
             xt = batch["x_t"]
@@ -111,4 +111,4 @@ def train(max_samples: int | None = 1000):
     print("Training complete.")
 
 if __name__ == "__main__":
-    train(max_samples=1000000)
+    train(max_samples=1000)
