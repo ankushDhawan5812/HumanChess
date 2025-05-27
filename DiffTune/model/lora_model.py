@@ -28,6 +28,7 @@ class LoraDiffusionModel(nn.Module):
         # self.embed_moves = nn.Embedding(num_moves, self.d_model)
         self.t_embed = nn.Embedding(21, self.d_model)
         nn.init.zeros_(self.t_embed.weight)
+        self.final_ln = nn.LayerNorm(self.d_model)
 
         pretrained_model = torch.load(base_model_path, map_location="cpu")
 
@@ -68,15 +69,16 @@ class LoraDiffusionModel(nn.Module):
         self.bucket_size = bucket_size
         self.num_buckets = (elo_max-elo_min)//bucket_size + 1
         self.elo_buckets = nn.Embedding(self.num_buckets, self.d_model)
-        self.move_head  = nn.Linear(self.d_model, 2000, bias=False)
-        self.move_head.weight = self.transformer.input_emb.weight 
+        self.move_head  = nn.Linear(self.d_model, 2000)
+        nn.init.normal_(self.transformer.input_emb.weight, std=0.02)
+        nn.init.zeros_(self.move_head.bias)
 
     def forward(self, s_tokens, x_t, elo_idx_float, t):
         batch_size, state_size = s_tokens.shape
         max_length = x_t.shape[1]
         d_model = self.d_model 
         embeds = self.transformer.input_emb
-        s_emb = embeds(s_tokens) * math.sqrt(self.d_model)
+        s_emb = embeds(s_tokens) 
         pool  = self.lora_transformer.pool.expand(batch_size, -1, -1)                                                                                    
 
         idxf = elo_idx_float.clamp(0, self.num_buckets-1)
@@ -87,7 +89,7 @@ class LoraDiffusionModel(nn.Module):
         emb_hi = self.elo_buckets(hi)                                            
         elo_emb = emb_lo * w_lo + emb_hi * w_hi                                        
         
-        f_emb = embeds(x_t) * math.sqrt(self.d_model)
+        f_emb = embeds(x_t)
         x = torch.cat([pool, s_emb, f_emb], dim=1) 
         x = self.lora_transformer.pos_enc(x)
         elo_exp = elo_emb.unsqueeze(1).expand(-1, x.size(1), -1)   
@@ -98,6 +100,7 @@ class LoraDiffusionModel(nn.Module):
         for layer in self.lora_transformer.layers:
             x = layer(x)                                                  
 
+        x = self.final_ln(x)
         future_hidden = x[:, 1+state_size :, :]                                           
         logits = self.move_head(future_hidden)                          
         return logits

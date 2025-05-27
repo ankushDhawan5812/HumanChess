@@ -14,7 +14,7 @@ from tqdm import tqdm
 def train(max_samples: int | None = 1000):
     batch_size = 10
     num_epochs = 10
-    lr = 1e-5
+    lr = 1e-4
     total_t = 20
     betas = [(i + 1) / (total_t * 10) for i in range(total_t)]
     num_moves = 2000
@@ -84,8 +84,9 @@ def train(max_samples: int | None = 1000):
             B, L, V = logits.shape
             flat_logits = logits.view(-1, V)
             flat_x0 = x0.view(-1)
-            ce = nn.functional.cross_entropy(flat_logits, flat_x0, reduction="none").view(B, L)      
-            mask = (xt != x0).float()           
+            ce = nn.functional.cross_entropy(flat_logits, flat_x0, reduction="none").view(B, L) 
+            pad_mask = (x0 != 1999).float()     
+            mask = (xt != x0).float()   
             # Weight by lambdas
             weight = lambdas[t]
             loss = ((ce * mask).sum(dim=1) * weight).mean()
@@ -111,4 +112,4 @@ def train(max_samples: int | None = 1000):
     print("Training complete.")
 
 if __name__ == "__main__":
-    train(max_samples=1000)
+    train(max_samples=1000000)
