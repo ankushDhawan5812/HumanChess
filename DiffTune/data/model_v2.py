@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-from infra_2d import TransformerDecoder2D
+from data.infra_2d import TransformerDecoder2D
 
-def load_base_model(model_path="/home/ankush/repos/chess_train/HumanChess/models/model_epoch_7.pth"):
+def load_base_model(model_path="/home/ankush/repos/chess_train/HumanChess/DiffTune/trainer/model_epoch_7.pth"):
     """
     Load the base TransformerDecoder2D model
     """

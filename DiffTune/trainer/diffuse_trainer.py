@@ -3,13 +3,17 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from peft import get_peft_model_state_dict
 from transformers import get_linear_schedule_with_warmup
-from diffusion.diffusion import Diffusion
+import sys
+sys.path.append('..')
 from model.lora_model import LoraDiffusionModel
+
+from diffusion.diffusion import Diffusion
 from datasets import load_from_disk
+from tqdm import tqdm
 
 def train(max_samples: int | None = 1000):
     batch_size = 10
-    num_epochs = 4
+    num_epochs = 10
     lr = 3e-4
     total_t = 20
     betas = [(i + 1) / total_t for i in range(total_t)]
@@ -17,7 +21,7 @@ def train(max_samples: int | None = 1000):
     elo_min, elo_max, bucket_size = 1200,1800,100
     d_elo = 256
 
-    ds = load_from_disk("data/data/sasa_1200_1800/")
+    ds = load_from_disk("/home/ankush/repos/chess_train/HumanChess/DiffTune/data/data/sasa_1200_1800/")
     if max_samples is not None:
         ds = ds.select(range(max_samples))
     ds.set_format(type="torch", columns=["s_tokens","f_tokens","elo_idx_float"])
@@ -33,7 +37,7 @@ def train(max_samples: int | None = 1000):
         print("Using CPU")
 
     model = LoraDiffusionModel(
-        base_model_path="trainer/model_epoch_7.pth",
+        base_model_path="/home/ankush/repos/chess_train/HumanChess/DiffTune/trainer/model_epoch_7.pth",
         elo_min=elo_min, elo_max=elo_max, bucket_size=bucket_size,
         betas=betas, num_moves=num_moves
     ).to(device)
@@ -60,7 +64,9 @@ def train(max_samples: int | None = 1000):
 
     model.train()
     for epoch in range(num_epochs):
-        for batch in loader:
+    # for epoch in [1]:
+        epoch_pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{num_epochs}")
+        for batch in epoch_pbar:
             batch_size = batch["x_t"].size(0)
             for k in batch:
                 batch[k] = batch[k].to(device)
@@ -69,7 +75,7 @@ def train(max_samples: int | None = 1000):
                 batch["s_tokens"],
                 batch["x_t"],
                 batch["elo_idx_float"],
-                batch["t"]
+                # batch["t"]
             )                                      
             x0 = batch["x_0"]
             xt = batch["x_t"]
@@ -89,11 +95,20 @@ def train(max_samples: int | None = 1000):
             optimizer.step()
             scheduler.step()
 
+            epoch_pbar.set_postfix(loss=f"{loss.item():.4f}")
+
+            if (epoch + 1) % 5 == 0:
+                state = get_peft_model_state_dict(model.lora_transformer)
+                # torch.save(state, "/home/ankush/repos/chess_train/HumanChess/DiffTune/trainer/lora_adapters.pt")
+                save_path = f"/home/ankush/repos/chess_train/HumanChess/DiffTune/trainer/model_lora_epoch_{epoch+1}.pt"
+                torch.save(state, save_path)
+                print(f"Model weights saved at {save_path}")
+
         print(f"Epoch {epoch+1}/{num_epochs} — loss {loss.item():.4f}")
 
     state = get_peft_model_state_dict(model.lora_transformer)
-    torch.save(state, "checkpoints/lora_adapters.pt")
+    torch.save(state, "/home/ankush/repos/chess_train/HumanChess/DiffTune/trainer/lora_adapters.pt")
     print("Training complete.")
 
 if __name__ == "__main__":
-    train(max_samples=1000)
+    train(max_samples=1000000)

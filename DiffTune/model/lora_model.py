@@ -45,7 +45,7 @@ class LoraDiffusionModel(nn.Module):
         self.embed_peices.weight.requires_grad = False
 
         lora_cfg = LoraConfig(
-            task_type="CAUSAL_LM", r=8, lora_alpha=16, lora_dropout=0.1,
+            task_type="CAUSAL_LM", r=24, lora_alpha=48, lora_dropout=0.1, use_rslora=True,
             target_modules=["q_proj","k_proj","v_proj","o_proj"]
         )
         self.lora_transformer = get_peft_model(self.transformer, lora_cfg)
@@ -56,7 +56,7 @@ class LoraDiffusionModel(nn.Module):
         self.elo_buckets = nn.Embedding(self.num_buckets, self.d_model)
         self.move_head  = nn.Linear(self.d_model, num_moves) # mark this to look into, might need two output heads for states and actions
 
-    def forward(self, s_tokens, x_t, elo_idx_float, t):
+    def forward(self, s_tokens, x_t, elo_idx_float):
         batch_size, state_size = s_tokens.shape
         max_length = x_t.shape[1]
         d_model = self.d_model 

@@ -5,10 +5,11 @@ import time
 import csv
 from fen_conv import NUM_BUCKETS, BUCKET_MIDPOINTS, convert_to_token, id_to_move, move_to_id
 from model_v2 import load_base_model
-from sv_move import return_next_move
+from sv_move import return_next_move, return_next_move_subsample
 
-SCALE = 0.4
+SCALE = 0.6
 EPSILON = 0.00001
+MAX_LINES = 10_000_000  # Process only first 5 million lines
 
 model, device = load_base_model()
 
@@ -50,8 +51,11 @@ def main():
     str_indexes = [str(i) for i in indexes]
     headers = ["FEN"] + str_indexes
     
+    INPUT_FILE = "/home/ankush/repos/chess_train/HumanChess/chess_moves_with_elo.csv"
+    OUTPUT_FILE = "/home/ankush/repos/chess_train/HumanChess/relabeled_chess_moves.csv"
+
     # Open files for reading and writing
-    with open("/content/drive/My Drive/chess_moves_with_elo.csv", 'r') as infile, open("/content/drive/My Drive/noisy_fen_dataset_out.csv", 'w', newline='') as outfile:
+    with open(INPUT_FILE, 'r') as infile, open(OUTPUT_FILE, 'w', newline='') as outfile:
         reader = csv.reader(infile)
         writer = csv.writer(outfile)
         
@@ -59,10 +63,20 @@ def main():
         header = next(reader)
         writer.writerow(headers)
         
-        # Process each row
+        # Process each row up to MAX_LINES
         for i, row in enumerate(reader):
+            if i >= MAX_LINES:
+                print(f"Reached maximum limit of {MAX_LINES:,} lines. Stopping processing.")
+                break
+                
             fen, move = row[0], row[1]
-            print(f"Processing {i+1}: FEN: {fen}, Move: {move}")
+            # print(f"Processing {i+1:,}: FEN: {fen}, Move: {move}")
+            print(f"Processed {i+1}, Percent: {i/MAX_LINES * 100}%")
+            
+            # Print progress every 100,000 lines
+            # if (i + 1) % 100000 == 0:
+            #     # print(f"Progress: {i+1:,} / {MAX_LINES:,} lines processed ({((i+1)/MAX_LINES)*100:.1f}%)")
+            #     print(f"Percent: {i }")
             
             # Get next fen string win percentage
             board = chess.Board(fen)
@@ -73,9 +87,9 @@ def main():
             new_fen_winp = get_win_percentage(new_fen)
             
             # Get next top moves with closest win percentages
-            results = return_next_move_subsample(fen, num_moves=5)
+            results = return_next_move_subsample(fen, num_moves=10)
             sorted_results = sorted(results, key=lambda x: abs(x[1] - new_fen_winp))
-            num_moves = 3
+            num_moves = 6
             top_6_moves = sorted_results[1:num_moves+1]
             target_move = sorted_results[0]
             
@@ -88,6 +102,8 @@ def main():
             # Prepare row data and write to output file
             output_row = [fen] + encoding.tolist()
             writer.writerow(output_row)
+        
+        print(f"Processing complete! Total lines processed: {min(i+1, MAX_LINES):,}")
 
 if __name__ == "__main__":
     main()

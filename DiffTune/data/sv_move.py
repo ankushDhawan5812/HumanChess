@@ -1,7 +1,7 @@
 import torch
-from infra import TransformerDecoder
-from infra_2d import TransformerDecoder2D
-from fen_conv import NUM_BUCKETS, BUCKET_MIDPOINTS, convert_to_token   
+# from infra import TransformerDecoder
+from data.infra_2d import TransformerDecoder2D
+from data.fen_conv_diff import NUM_BUCKETS, BUCKET_MIDPOINTS, convert_to_token   
 import chess
 import random
 
@@ -38,7 +38,7 @@ model = TransformerDecoder2D(
 ).to(device)
 
 # load cur params
-state = torch.load("/home/ankush/repos/chess_train/HumanChess/models/model_epoch_7.pth", map_location=device)
+state = torch.load("/home/ankush/repos/chess_train/HumanChess/DiffTune/trainer/model_epoch_7.pth", map_location=device)
 model.eval()
 model.load_state_dict(state)      # strict=True by default
 
