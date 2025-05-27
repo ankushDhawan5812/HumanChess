@@ -9,6 +9,5 @@ DiffTune/trainer/__pycache__/
 DiffTune/model/__pycache__/
 DiffTune/diffusion/__pycache__/
 DiffTune/data/__pycache__/
-DiffTune/diffusion/data/*
 DiffTune/data/data*
 __pycache__/

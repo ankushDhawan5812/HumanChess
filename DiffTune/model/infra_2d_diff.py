@@ -24,6 +24,14 @@ class PositionalEncoding2D(nn.Module):
         self.register_buffer('pe', pe.unsqueeze(0))  
 
     def forward(self, x):
+        if x.size(1) > self.pe.size(1):                   
+            extra = x.size(1) - self.pe.size(1)
+            pos   = torch.arange(self.pe.size(1), self.pe.size(1)+extra, dtype=torch.float, device=x.device).unsqueeze(1)
+            div   = torch.exp(torch.arange(0, self.pe.size(2), 2, device=x.device).float() * (-math.log(10000.0) / self.pe.size(2)))
+            extra_pe = torch.zeros(extra, self.pe.size(2), device=x.device)
+            extra_pe[:, 0::2] = torch.sin(pos * div)
+            extra_pe[:, 1::2] = torch.cos(pos * div)
+            self.pe = torch.cat([self.pe, extra_pe.unsqueeze(0)], dim=1)
         x = x + self.pe[:, :x.size(1), :]
         return self.dropout(x)
 
@@ -144,7 +152,8 @@ class TransformerDecoder2D(nn.Module):
         seq_len: int,
         output_size: int = None,
         max_distance: int = 8,
-        use_causal_mask: bool = False
+        use_causal_mask: bool = False,
+        T: int = 20
     ):
         super().__init__()
         # embeddings + coords
@@ -163,7 +172,7 @@ class TransformerDecoder2D(nn.Module):
         self.out_proj = nn.Linear(d_model, output_size or action_size)
 
 
-    def forward(self, x, padding_mask=None):
+    def forward(self, x, t, padding_mask=None):
         B, L = x.shape
         emb = self.input_emb(x)
         pool = self.pool.expand(B,-1,-1)

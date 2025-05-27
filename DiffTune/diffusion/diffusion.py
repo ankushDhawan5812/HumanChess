@@ -10,11 +10,11 @@ class Diffusion:
     
     def diffuse(self, batch):
         state_tokens = [idx['s_tokens'] for idx in batch] # initial ids
-        future_tokens = [idx['f_tokens'] for idx in batch] # future states and actions
+        future_tokens = [idx['f_tokens'] + 31 for idx in batch] # future states and actions
         elo_tokens = torch.stack([idx['elo_idx_float'] for idx in batch]) # elo index to prepend
 
         state_tokens  = pad_sequence(state_tokens, batch_first=True, padding_value=0)
-        future_tokens  = pad_sequence(future_tokens, batch_first=True, padding_value=0)
+        future_tokens  = pad_sequence(future_tokens, batch_first=True, padding_value=1999)
         batch_size = future_tokens.shape[0]
         max_length = future_tokens.shape[1]
 

@@ -16,18 +16,21 @@ class LoraDiffusionModel(nn.Module):
             num_heads=8,
             d_ff=1024,
             dropout=0.1,
-            action_size=31,
+            action_size=2000,
             seq_len=77,
             max_distance=8,
             use_causal_mask=False,
-            output_size=num_moves,
+            output_size=2000,
         )
 
         self.d_model = 256
-        self.embed_peices = nn.Embedding(self.piece_vocab, self.d_model)
-        self.embed_moves = nn.Embedding(num_moves, self.d_model)
+        # self.embed_peices = nn.Embedding(self.piece_vocab, self.d_model)
+        # self.embed_moves = nn.Embedding(num_moves, self.d_model)
+        self.t_embed = nn.Embedding(21, self.d_model)
+        nn.init.zeros_(self.t_embed.weight)
 
         pretrained_model = torch.load(base_model_path, map_location="cpu")
+
         filtered = {
             k: v for k, v in pretrained_model.items()
             if not k.startswith("out_proj")      
@@ -36,13 +39,24 @@ class LoraDiffusionModel(nn.Module):
         
         self.transformer.load_state_dict(filtered, strict=False)
 
-        with torch.no_grad():
-            self.embed_peices.weight.copy_(self.transformer.input_emb.weight)
+        old_embed = pretrained_model["input_emb.weight"]
+        old_action, dim = old_embed.shape
+        new_embed = torch.empty(2000, dim)
+        new_embed[:old_action] = old_embed
+        nn.init.normal_(new_embed[old_action:], std=0.01)
+        self.transformer.input_emb = nn.Embedding.from_pretrained(new_embed, freeze=False)
 
-        for p in self.transformer.parameters():
-            p.requires_grad = False
-        
-        self.embed_peices.weight.requires_grad = False
+        for block in self.transformer.layers:
+            block.attn.rel_bias.data.zero_()
+            block.attn.rel_bias.requires_grad_(False)
+
+        for n, p in self.transformer.named_parameters():
+            if n == "input_emb.weight":
+                p.requires_grad_(True)
+            elif 'norm' in n:
+                p.requires_grad_(True)
+            else:
+                p.requires_grad_(False)
 
         lora_cfg = LoraConfig(
             task_type="CAUSAL_LM", r=24, lora_alpha=48, lora_dropout=0.1, use_rslora=True,
@@ -54,16 +68,16 @@ class LoraDiffusionModel(nn.Module):
         self.bucket_size = bucket_size
         self.num_buckets = (elo_max-elo_min)//bucket_size + 1
         self.elo_buckets = nn.Embedding(self.num_buckets, self.d_model)
-        self.move_head  = nn.Linear(self.d_model, num_moves) # mark this to look into, might need two output heads for states and actions
+        self.move_head  = nn.Linear(self.d_model, 2000, bias=False)
+        self.move_head.weight = self.transformer.input_emb.weight 
 
-    def forward(self, s_tokens, x_t, elo_idx_float):
+    def forward(self, s_tokens, x_t, elo_idx_float, t):
         batch_size, state_size = s_tokens.shape
         max_length = x_t.shape[1]
         d_model = self.d_model 
-        s_emb = self.embed_peices(s_tokens) * math.sqrt(d_model)  
-        pool  = self.lora_transformer.pool.expand(batch_size, -1, -1)                     
-        x = torch.cat([pool, s_emb], dim=1)
-        x = self.lora_transformer.pos_enc(x)                                                                
+        embeds = self.transformer.input_emb
+        s_emb = embeds(s_tokens) * math.sqrt(self.d_model)
+        pool  = self.lora_transformer.pool.expand(batch_size, -1, -1)                                                                                    
 
         idxf = elo_idx_float.clamp(0, self.num_buckets-1)
         lo, hi = idxf.floor().long(), idxf.ceil().long()                        
@@ -71,12 +85,14 @@ class LoraDiffusionModel(nn.Module):
         w_lo = 1.0 - w_hi                                                       
         emb_lo = self.elo_buckets(lo)                                            
         emb_hi = self.elo_buckets(hi)                                            
-        elo_emb = emb_lo * w_lo + emb_hi * w_hi                                  
-        elo_exp = elo_emb.unsqueeze(1).expand(-1, state_size+1, -1)                    
-
+        elo_emb = emb_lo * w_lo + emb_hi * w_hi                                        
+        
+        f_emb = embeds(x_t) * math.sqrt(self.d_model)
+        x = torch.cat([pool, s_emb, f_emb], dim=1) 
+        x = self.lora_transformer.pos_enc(x)
+        elo_exp = elo_emb.unsqueeze(1).expand(-1, x.size(1), -1)   
         x = x + elo_exp                                                
-        f_emb = self.embed_moves(x_t) * math.sqrt(d_model)       
-        x = torch.cat([x, f_emb], dim=1)     
+        x = x + self.t_embed(t).unsqueeze(1)
  
         #NO MASKING TO BASICALLY LET IT SEE EVERYTHING AND REVERSE THE NOISE
         for layer in self.lora_transformer.layers:
