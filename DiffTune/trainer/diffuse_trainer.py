@@ -103,6 +103,7 @@ def train(max_samples: int | None = 1000):
                 # torch.save(state, "/home/ankush/repos/chess_train/HumanChess/DiffTune/trainer/lora_adapters.pt")
                 save_path = f"/home/ankush/repos/chess_train/HumanChess/DiffTune/trainer/model_lora_epoch_{epoch+1}.pt"
                 torch.save(state, save_path)
+                torch.save(model.state_dict(), f"full_model_epoch_{epoch+1}.pth")
                 print(f"Model weights saved at {save_path}")
 
         print(f"Epoch {epoch+1}/{num_epochs} — loss {loss.item():.4f}")
