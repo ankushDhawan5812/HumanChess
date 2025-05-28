@@ -13,20 +13,6 @@ import torch.nn.functional as F
 import torch
 import torch.nn.functional as F
 
-def mask_illegal_logits(logits_slice, board, move_offset=31):
-    """
-    logits_slice : Tensor [H, V] (single position)
-    board        : python-chess Board
-    Returns a masked-in-place tensor (no new allocation).
-    """
-    logits_slice[:, :move_offset] -= 1e9     
-
-    for m in board.legal_moves:
-        u = m.uci()
-        if u in MOVE_TO_ID:                   
-            gid = MOVE_TO_ID[u] + move_offset
-            logits_slice[:, gid] += 1e9 
-
 def multinomial_diffuse_generate(
         model,
         s_tokens,           
@@ -50,23 +36,26 @@ def multinomial_diffuse_generate(
         t_tensor = torch.full((B,), t, dtype=torch.long, device=device)
 
         logits = model(s_tokens, x_t, elo_float, t_tensor)  
-        # mask_illegal_logits(logits[0], board)
         probs  = torch.softmax(logits[0, 0], dim=-1)
         entropy = -(probs * probs.log()).sum().item()
         print(f"entropy on 1st future slot: {entropy:.2f}")   
-
+        
+        max_entropy = 7.6
+        entropy_norm = min(entropy / max_entropy, 1.0)
+        
         probs = F.softmax(logits, dim=-1)     
                    
-
         x_hat = torch.multinomial(
                     probs.view(-1, vocab_size), 1
                 ).view(B, horizon)
         conf = torch.max(probs, dim=-1).values            
 
- 
-        keep_ratio = 0.5 * t / T
+        base_rate = t / T
+        min_rate = 0.2 * t / T
+        keep_ratio = (1 - entropy_norm) * base_rate + entropy_norm * min_rate
+        print(f"keep_ratio: {keep_ratio:.4f} (entropy_norm: {entropy_norm:.4f})")
+        
         for b in range(B):
-           
             num_unfrozen   = (~frozen[b]).sum().item()
             num_to_freeze  = int(num_unfrozen * keep_ratio)
 
@@ -105,7 +94,7 @@ def main():
     elo_min, elo_max, bucket_size = 1200, 1800, 100
 
     lora_model = LoraDiffusionModel(
-        base_model_path="/home/ankush/repos/chess_train/HumanChess/DiffTune/trainer/model_epoch_7.pth",
+        base_model_path="model_epoch_7.pth",
         elo_min=elo_min, 
         elo_max=elo_max, 
         bucket_size=bucket_size,
@@ -123,27 +112,18 @@ def main():
         if any(tag in k for tag in ["pos_enc.pe", "token_coords", "rel_idx"]):
             del ckpt[k]                       # drop the shape-dependent tensors
     lora_model.load_state_dict(ckpt, strict=False) 
-    load_info = lora_model.load_state_dict(ckpt, strict=False)
-    print("missing :", load_info.missing_keys)     # should be ONLY the buffers you deleted
-    print("unexpected:", load_info.unexpected_keys)# should be []
-    assert not [k for k in load_info.missing_keys if ".lora_" in k or "input_emb" in k], "critical trainable weights missing!"
 
     with torch.no_grad():
         W = lora_model.transformer.input_emb.weight
         print("avg ‖piece rows‖ :", W[:31].norm(dim=1).mean().item())
         print("avg ‖move  rows‖ :", W[31:].norm(dim=1).mean().item())
-    fen_str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-    #fen_str = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 4 4"
-    board = chess.Board(fen_str) # set up current FEN
-
+    #fen_str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    fen_str = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 4 4"
+    board = chess.Board(fen_str) 
     first_state = convert_to_token(fen_str)
     first_state = torch.from_numpy(first_state).long().unsqueeze(0).to(device)
     print(len(first_state[0]))
-
-
-
-
-    elo_embed_float = 3.0  # Example elo index, adjust as needed
+    elo_embed_float = 3.0  
     output = multinomial_diffuse_generate(model=lora_model, s_tokens=first_state, elo_float=torch.tensor([elo_embed_float]).to(device), horizon=312, T=20, vocab_size=2000, move_offset=31, device=device, board=board)
     print("Output tokens:", output)
     uci_move = id_to_move(output.item() - 31)
