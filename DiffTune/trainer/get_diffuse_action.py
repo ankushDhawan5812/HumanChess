@@ -141,6 +141,8 @@ def main():
     print(len(first_state[0]))
 
 
+
+
     elo_embed_float = 3.0  # Example elo index, adjust as needed
     output = multinomial_diffuse_generate(model=lora_model, s_tokens=first_state, elo_float=torch.tensor([elo_embed_float]).to(device), horizon=312, T=20, vocab_size=2000, move_offset=31, device=device, board=board)
     print("Output tokens:", output)
