@@ -43,7 +43,6 @@ def calc_encoding(cur_id, top_6_winps, top_6_ids, target_winp):
     return encoding
 
 def load_chess_data_from_npz(file_pattern):
-    """Load chess data from NPZ files matching the pattern"""
     files = sorted(glob.glob(file_pattern))
     if not files:
         raise FileNotFoundError(f"No files found matching pattern: {file_pattern}")
@@ -59,8 +58,7 @@ def load_chess_data_from_npz(file_pattern):
         all_fens.append(data['fens'])
         all_actions.append(data['actions'])
         all_action_ids.append(data['action_ids'])
-    
-    # Concatenate all data
+
     combined_fens = np.concatenate(all_fens)
     combined_actions = np.concatenate(all_actions)
     combined_action_ids = np.concatenate(all_action_ids)
@@ -69,7 +67,6 @@ def load_chess_data_from_npz(file_pattern):
     return combined_fens, combined_actions, combined_action_ids
 
 def save_noisy_data_npz(fens, encodings, output_filename):
-    """Save the noisy encoded data to NPZ format"""
     print(f"Saving {len(fens)} records to {output_filename}")
     np.savez_compressed(output_filename, 
                        fens=fens,
@@ -77,7 +74,6 @@ def save_noisy_data_npz(fens, encodings, output_filename):
     print(f"Saved to {output_filename}")
 
 def process_in_batches(fens, actions, batch_size=10000, output_prefix="noisy_fen_dataset"):
-    """Process data in batches to manage memory usage"""
     total_records = len(fens)
     all_processed_fens = []
     all_encodings = []
@@ -97,17 +93,15 @@ def process_in_batches(fens, actions, batch_size=10000, output_prefix="noisy_fen
                 print(f"  Processing {i+1}/{len(batch_fens)} in current batch")
             
             try:
-                # Get next fen string win percentage
                 board = chess.Board(fen)
                 copy_board = board.copy()
                 copy_board.push(chess.Move.from_uci(move))
                 new_fen = copy_board.fen()
                 new_fen_winp = get_win_percentage(new_fen)
 
-                # Get next top 6 closest win percentages
                 results = return_next_move(fen)
                 sorted_results = sorted(results, key=lambda x: abs(x[1] - new_fen_winp))
-                top_6_moves = sorted_results[1:7]  # Skip the first one as it is the current move
+                top_6_moves = sorted_results[1:7]  
                 target_move = sorted_results[0]
 
                 top_6_winps = [top_6_moves[j][1] for j in range(len(top_6_moves))]
@@ -122,7 +116,6 @@ def process_in_batches(fens, actions, batch_size=10000, output_prefix="noisy_fen
                 print(f"  Error processing record {i}: {e}")
                 continue
         
-        # Convert to numpy arrays
         if batch_processed_fens:
             batch_processed_fens = np.array(batch_processed_fens, dtype='U200')
             batch_encodings = np.array(batch_encodings, dtype=np.float32)
@@ -130,14 +123,10 @@ def process_in_batches(fens, actions, batch_size=10000, output_prefix="noisy_fen
             all_processed_fens.append(batch_processed_fens)
             all_encodings.append(batch_encodings)
             
-            print(f"  Successfully processed {len(batch_processed_fens)} records in this batch")
-    
-    # Combine all batches
     if all_processed_fens:
         final_fens = np.concatenate(all_processed_fens)
         final_encodings = np.concatenate(all_encodings)
         
-        # Save the final result
         save_noisy_data_npz(final_fens, final_encodings, f"{output_prefix}.npz")
         return final_fens, final_encodings
     else:
@@ -145,30 +134,22 @@ def process_in_batches(fens, actions, batch_size=10000, output_prefix="noisy_fen
         return None, None
 
 def main():
-    # Load data from NPZ files
-    # Adjust the pattern to match your actual files
-    file_pattern = "chess_data_1200_1600_*.npz"  # Change this to match your files
+    file_pattern = "chess_data_1200_1600_*.npz"  
     
     try:
         fens, actions, action_ids = load_chess_data_from_npz(file_pattern)
-        
-        # Process the data in batches to avoid memory issues
         processed_fens, encodings = process_in_batches(
             fens, actions, 
-            batch_size=10000,  # Adjust batch size based on your memory
+            batch_size=10000, 
             output_prefix="noisy_fen_dataset_1200_1600"
         )
         
         if processed_fens is not None:
-            print(f"\n✅ Successfully processed {len(processed_fens)} records")
-            print(f"Encoding shape: {encodings.shape}")
-            print(f"Sample encoding sum: {np.sum(encodings[0])}")
-        
+            print(f"\nprocessed {len(processed_fens)} records")
     except Exception as e:
         print(f"Error: {e}")
 
 def load_noisy_data(filename):
-    """Helper function to load the processed noisy data"""
     data = np.load(filename)
     return data['fens'], data['encodings']
 
