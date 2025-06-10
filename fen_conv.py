@@ -2,13 +2,14 @@ import numpy as np
 import chess
 import math
 
+# this code is largely very similar to the conversion strategy used by DeepMind and other papers!
+
 NUM_BUCKETS = 128       
 FULL = np.linspace(0.0, 1.0, NUM_BUCKETS + 1, dtype=np.float32)
 BUCKET_EDGES = FULL[1:-1]              
 BUCKET_MIDPOINTS = (FULL[:-1] + FULL[1:]) * 0.5
 
 def win_to_bucket(win_pct):
-    """Map win% in [0,1] → integer bucket id 0 … K-1 (vectorised)."""
     return np.searchsorted(BUCKET_EDGES, win_pct, side='left')
 
 def hl_gauss(win_pct):
@@ -51,7 +52,6 @@ def convert_to_token(fen, seq_len=77):
     else:
         for char in castling:
             token.append(idx[char])
-        # Padding castling to have exactly 4 characters.
         if len(castling) < 4:
             token.extend((4 - len(castling)) * [idx['.']])
 
@@ -80,11 +80,9 @@ def compute_all_possible_actions():
 
     for sq in range(64):
         next_loc = []
-        # queen
         board.set_piece_at(sq, chess.Piece.from_symbol('Q'))
         next_loc += board.attacks(sq)
 
-        # knight
         board.set_piece_at(sq, chess.Piece.from_symbol('N'))
         next_loc += board.attacks(sq)
         board.remove_piece_at(sq)
@@ -92,7 +90,6 @@ def compute_all_possible_actions():
         for tgt in next_loc:
             all_moves.append(chess.square_name(sq) + chess.square_name(tgt))
 
-    # add promotion possibilities
     for (rank, next_rank) in [('2','1'), ('7','8')]:
         for i, cur_file in enumerate(ROWS):
             for promo in ['q','r','b','n']:
@@ -108,7 +105,6 @@ def compute_all_possible_actions():
                 for promo in ['q','r','b','n']:
                     all_moves.append(f"{cur_file}{rank}{right}{next_rank}{promo}")
 
-    # Deduplicate & sort lexicographically
     unique = sorted(set(all_moves))
     assert len(unique) == 1968, f"Expected 1968 moves, got {len(unique)}"
 
@@ -120,43 +116,19 @@ MOVE_TO_ID, ID_TO_MOVE = compute_all_possible_actions()
 
 
 def move_to_id(move: str) -> int:
-    """Convert UCI string (e.g. 'e2e4') → [0..1967]"""
     return MOVE_TO_ID[move]
 
 def id_to_move(idx: int) -> str:
-    """Convert [0..1967] → UCI string"""
     return ID_TO_MOVE[idx]
 
 def centipawns_to_win_probability(centipawns: int) -> float:
-  """Returns the win probability (in [0, 1]) converted from the centipawn score.
-
-  Reference: https://lichess.org/page/accuracy
-  Well-known transformation, backed by real-world data.
-
-  Args:
-    centipawns: The chess score in centipawns.
-  """
   return 0.5 + 0.5 * (2 / (1 + math.exp(-0.00368208 * centipawns)) - 1)
 
-# get the edges and the values for a uniform partition from 0 to 1 into buckets, 
-# edges are the split points and the the values are the midpoints
 def get_uniform_buckets_edges_values(num_buckets: int):
-    """
-    Returns (edges, values) for uniform partition of [0,1] into num_buckets.
-
-    edges:   array of length num_buckets-1, the split points.
-    values:  array of length num_buckets, the midpoint of each bucket.
-
-    Example for num_buckets=4:
-      full_linspace = [0. , 0.25, 0.5, 0.75, 1.0]
-      edges  = [0.25, 0.5 , 0.75]
-      values = [0.125, 0.375, 0.625, 0.875]
-    """
     full = np.linspace(0.0, 1.0, num_buckets + 1)
     edges  = full[1:-1]
     values = (full[:-1] + full[1:]) * 0.5
     return edges, values
 
-# map win percent to to bucket index, prob 128
 def bucketize(win_percents: np.ndarray, edges: np.ndarray) -> np.ndarray:
     return np.searchsorted(edges, win_percents, side='left')
